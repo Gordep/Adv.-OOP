@@ -1,2 +1,2 @@
-# Adv.-Object-Oriented-Programng
-Labs created for Adv. Object-Oriented Programng
+# Adv.-OOP
+Labs created for Adv.OOP
