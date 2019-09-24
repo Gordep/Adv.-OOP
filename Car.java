@@ -1,24 +1,34 @@
 /*
 	Author - Julian Gonzalez
-
-	Lab project 1 for CS 3331
-	Program to predict the location of drivers on a course
-	given different top speeds for each segment(1 mile) of a three mile course
-	three different cars will be doing the same track but starting at different times
-	9/6-Initial setup adding instances, main.
-	9/7-Adding calculation methods and print statements.
-	9/7 -Add comments making code look nicer
-	9/12 - revise code making it more OO 
-	9/13 - Final touches adding/checking comments and cleaning up the code
-
+	
+	Program 3 is an extension of program 1 where we found the mph of a car at a certain time interval
+	In program 3 we are modifying the our code to accept xml input files for segments on the track.
+	This will be accomplished with the work that was done on program 2 where we create an xml file reader.
+	9/19 - added xml reader from program 2
+	9/20 - added check for duplicates and gap methods
+	9/21 - significant changes to segment method making it more reusable.
+	9/22 - spell checking and adding more code
 */
 import java.util.*; 
-public class Car{
+import java.io.File;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import javax.xml.parsers.DocumentBuilder;
+import org.w3c.dom.Document;
+import org.w3c.dom.NodeList;
+import org.w3c.dom.Node;
+import org.w3c.dom.Element;
 
-	//not very OO?
+public class Car{
+	
+	//add public?
+	//constants 
 	static List<Double> list = new ArrayList<Double>();//list to hold the values of distances at certain times
-	static List<Double> mph = new ArrayList<Double>();//to hold values of the mpg at certain times
-	//formula mpg*5280ft/3600ft // can use 1mpg = 1.46667fps conversion but it is an approximate
+	static List<Double> mph = new ArrayList<Double>();//to hold values of the mph at certain times
+	//formula mph*5280ft/3600ft // can use 1mph = 1.46667fps conversion but it is an approximate
 	
 	double startTime;
 	String name; 
@@ -28,16 +38,13 @@ public class Car{
 	}
 
 	public static void main(String[] args) {
-		double acceleration = 15.0;//given 15fps 
-		double trackLength = 5280.0;//course length in feetstartTime = 15.0;
-
-		segment1(acceleration,trackLength);
-		segment2(acceleration,trackLength);
-		segment3(acceleration,trackLength);
 		Car[] students = {
-			new Car(0,"A"),//delay for each student driver
+			new Car(0,"A"),//delay for each driver
 			new Car(60,"B"),
 			new Car(120,"C")};
+		NodeList segments = XMLreader();
+		getTrackInfo(segments);
+		
 
 		System.out.printf("Time\tcar %s\t\tcar %s\t\tcar %s\n",students[0].name,students[1].name,students[2].name);//prints the initial line of the data
 		printData(students);//prints the rest of the data
@@ -45,7 +52,121 @@ public class Car{
 	/*
 		methods independent from the class  can be used without the object cars
 
-	*/
+	*/	
+	public static void getTrackInfo(NodeList track){//method gets the data from our nodelist and stores them into arrayList in order
+		List<Double> segmentNumber = new ArrayList<Double>();//seg track num
+		List<Double> segmentLength = new ArrayList<Double>();//seg track length
+		List<Double> segmentSpeeds = new ArrayList<Double>();//seg track speed
+
+		for (int i = 0;i<track.getLength();i++ ) {//for loop to get data required
+			//Node x = tracks.item(i)
+			segmentNumber.add(Double.parseDouble(track.item(i).getChildNodes().item(1).getTextContent()));
+		}
+
+		Collections.sort(segmentNumber);//sorts the arrayList 
+		Double[] segArray = new Double[segmentNumber.size()];
+		segmentNumber.toArray(segArray);//convert to array for convenience when checking for duplicates and gaps 
+		if (!noDups(segArray) || !noGaps(segArray)) {//if statement to check if there is a gap in segment numbers and if there are duplicates
+			System.exit(-1);//if i wanted to be saucy i could let them edit segment numbers in the nodelist
+		}
+
+		//this section of code gathers all of the data related to each segment in order and puts them in there respective array list
+		int exit = 0;
+		int iter = 0;
+		do{
+			if (segmentNumber.get(exit)== Double.parseDouble(track.item(iter).getChildNodes().item(1).getTextContent())){
+				//convert the length and speed to feet and feet per second then add them to array list
+				segmentLength.add((Double.parseDouble(track.item(iter).getChildNodes().item(3).getTextContent()))*5280.0);//change the number 3?	
+				segmentSpeeds.add((Double.parseDouble(track.item(iter).getChildNodes().item(5).getTextContent()))*5280.0/3600.0);
+				exit++;
+			}
+			iter ++;
+			if (iter == track.getLength()) {
+				iter = 0;
+			}
+		}while(exit != track.getLength());
+		checkLengths(segmentLength);//check if the length of the segment is valid
+		checkSpeed(segmentSpeeds);//check if speeds fall within range 5-80
+		calculateSegments(segArray,segmentLength,segmentSpeeds);
+	}
+	public static void calculateSegments(Double[] array,List<Double> sLengths,List<Double> sSpeeds ){//bulk of the code // a modified version of my segment calculator in program 1 can be reused as opposed to program 1's
+		double totalTraveled = 0;
+		double acceleration = 15;
+		for (int currentSeg = 0;currentSeg<array.length;currentSeg++ ) {
+			double currentSpeed = sSpeeds.get(currentSeg);
+			double prevSpeed = 0;
+			if (currentSeg != 0 ) {//allows for checking prev index
+				if (array[currentSeg-1]!= null) {//gets the previous speed for the acceleration process in the current segment
+				prevSpeed = sSpeeds.get(currentSeg-1);
+				}
+			}
+			double segTime = 0;
+			double segDistance = 0;
+			if (currentSeg != array.length-1) {//used to know if we are at the last segment and if we are not get values from previous segment
+				segTime = (currentSpeed - prevSpeed)/acceleration;
+				segDistance = 0 * segTime + (0.5*acceleration)*(segTime*segTime);
+			}
+			do{//same do while loop used in program 1
+				segTime+=0.01;
+				segTime = Math.round(segTime * 100D) / 100D;//used to round the double to two decimal places
+				
+				segDistance +=(0.01)*currentSpeed;
+				if (segTime % 30 == 0) {//adds the distance and time of every 30 seconds into the list
+					list.add(segDistance + totalTraveled);
+					mph.add(currentSpeed);
+				}
+
+			}while(segDistance < sLengths.get(currentSeg));
+			totalTraveled += sLengths.get(currentSeg);//assuming perfect transitions between segments adding the lengths to this to be used for the overall total distance traveled		
+		}
+		System.out.printf("Total distance to be traveled %.2f miles\n",totalTraveled/5280.0);
+	}
+
+	public static void checkLengths(List<Double> lengths){//checks if segment lengths are valid
+		double lowerBound = .5*5280.0;//convert .5 miles to feet
+		for (int i = 0;i<lengths.size() ;i++ ) {
+			if (lengths.get(i)<lowerBound) {
+				System.out.printf("length for segment %d is too small (.5 mile min)\n",i+1);
+				System.exit(-1);
+			}
+		}		
+	}
+	public static void checkSpeed(List<Double> speeds){//speeds must be from 5 to 80 mph
+		double lowerBound = 5.0*5280.0/3600.0; //5 mph to fps
+		double upperBound = 80.0*5280.0/3600.0;
+		for (int i = 0;i<speeds.size() ;i++ ) {
+			if (speeds.get(i)>upperBound || speeds.get(i)<lowerBound) {
+				System.out.printf("Speed for segment %d is either to slow or fast (5-80mph limit)\n",i+1);
+				System.exit(-1);
+			}
+		}
+	}
+
+	public static boolean noDups(Double[] array){//o(n^2) sadly //checks if the sorted array of track segments has no duplicates in it 
+		for (int i = 0;i<array.length;i++ ) {
+			for (int j = i+1;j<array.length;j++ ) {
+				if (array[i].equals(array[j]) ) {
+					System.out.println("XML file contains duplicates in segment number");
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+	public static boolean noGaps(Double[] array){//checks if the sorted array of track segments has no gaps in it 
+	 	for (int i = 0;i<array.length;i++ ) {
+	 		if ((double)i+1 != array[i]) {
+	 			System.out.println("XML file contains gaps in segment number");
+	 			return false;
+	 		}
+	 	}
+	 	return true;
+	}
+
+
+///////////////////////////////////////////////////////////////////////////////////////
+	//REUSED CODE FROM PREVIOUS PROGRAMS 1 AND 2
+	////////////
 	public static void printData(Car[] carArary){///prints the gathered data into desired format		
 		int carA = 0;
 		int carB = 0;
@@ -56,7 +177,7 @@ public class Car{
 			//////////////////////////////////////////
 			//This block prints out the times for the first car starting at 0
 			if(timePrinter>=carArary[0].startTime) {
-				System.out.printf("%.1f  %.2f  %.2f\t",timePrinter,mph.get(carA)*3600.0/5280.0,list.get(carA)/5280);//converting the	
+				System.out.printf("%.1f  %.2f  %.2f\t",timePrinter,mph.get(carA)*3600.0/5280.0,list.get(carA)/5280);
 				if (carA<list.size()-1) carA++;//single line if statement to prevent out of bounds error
 			}
 			/////////////////////////////////////
@@ -78,60 +199,41 @@ public class Car{
 			timePrinter += 30.0;
 		}while(carC != list.size());
 	}
-	public static void segment1(double acceleration,double trackLength){//calculates the distances and speeds of the first segment 
-		double segmentOneSpeed = (20)*5280.0 / 3600.0;  //20mph converted to fps for section 1
-		double segTimeA = (segmentOneSpeed - 0)/acceleration;// time = (vf-vi)/a / final velocity - initial velocity divided by acceleration to get time
-		double segDistanceA = 0 * segTimeA + (0.5*acceleration)*(segTimeA*segTimeA);//distance formula given initial velocity time and acceleration.
-		double time = segTimeA;
-		double distance = segDistanceA;
-		do{
-			time+=0.01;
-			time = Math.round(time * 100D) / 100D;//used to round the double to two decimal places
 
-			distance +=(0.01)*segmentOneSpeed;//increase distance according to the current speed limit
-			if (time % 30 == 0) {//adds the distance at every 30 seconds to the array list
-				list.add(distance);
-				mph.add(segmentOneSpeed);
 
+	//reused xml reader code from program 2
+	public static NodeList XMLreader(){//given xml parser with modifications 
+		try {
+			System.out.println("Enter the name (without file extension) of your xml file (must be located in the same place as program)");
+			Scanner read = new Scanner(System.in);
+			String filename = read.next();
+			filename = filename + ".xml";//add file extension
+			File inputFile = new File(filename);
+
+			if (!inputFile.canRead()) {//check if file does exist 
+				System.out.println("File does not exist");
+				System.exit(-1);
 			}
-		}while(distance < trackLength);
-	}
-	public static void segment2(double acceleration,double trackLength){//calculates the distances and speeds of the second segment 
-		double segmentOneSpeed = (20)*5280.0 / 3600.0;  //20mph converted to fps for section 1
-		double segmentTwoSpeed = (60)*5280.0 / 3600.0;  //60mph converted to fps for section 2
-		double segTimeA = (segmentTwoSpeed - segmentOneSpeed)/acceleration;
-		double segDistanceA = 0 * segTimeA + (0.5*acceleration)*(segTimeA*segTimeA);
 
-		double time = segTimeA;
-		double distance = segDistanceA;//increase distance according to the current speed limit
-		double lastItem = 5280.0;//assuming perfect transition so it would start 1 mile
-		do{
-			time+=0.01;
-			time = Math.round(time * 100D) / 100D;//used to round the double to two decimal places
+			DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+			DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+			Document doc = dBuilder.parse(inputFile);
+			doc.getDocumentElement().normalize();
+
+
+			Element elements = doc.getDocumentElement();
+			NodeList nList = elements.getChildNodes();
+
+			for (int i = 0 ;i<nList.getLength() ;i++ ) {//removes the whitetext (#text) from the nodelist
+				if (nList.item(i).getNodeType() == Node.TEXT_NODE) {
+					nList.item(i).getParentNode().removeChild(nList.item(i));
+				}
+			}			
+	        return nList;
 			
-			distance +=(0.01)*segmentTwoSpeed;
-			if (time % 30 == 0) {//adds the distance and time of every 30 seconds into the list
-				list.add(distance+lastItem);
-				mph.add(segmentTwoSpeed);
-			}
-
-		}while(distance < trackLength);
+		} catch (Exception e ) {
+			e.printStackTrace();
+		}
+		return null;
 	}
-	public static void segment3(double acceleration,double trackLength){//calculates the distances and speeds of the third segment 
-		//no need to calculate acceleration distance and time as this happens in the second segment of the track
-		double segmentThreeSpeed = (30)*5280.0 / 3600.0;  //30mph converted to fps for section 3
-		double time = 0; 
-		double distance = 0;
-		double lastItem = 5280.0*2;//assuming perfect transition so it would start 2 mile
-		do{
-			time+=0.01;
-			time = Math.round(time * 100D) / 100D;//used to round the double to two decimal places
-
-			distance +=(0.01)*segmentThreeSpeed;//increase distance according to the current speed limit
-			if (time % 30 == 0) {//adds the distance and time of every 30 seconds into the list
-				list.add(distance+lastItem);
-				mph.add(segmentThreeSpeed);
-			}
-		}while(distance < trackLength);
-	}	
-}	    	
+}
